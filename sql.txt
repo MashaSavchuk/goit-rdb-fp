@@ -1,0 +1,156 @@
+1. Створіть схему pandemic у базі даних за допомогою SQL-команди.
+Оберіть її як схему за замовчуванням за допомогою SQL-команди.
+Імпортуйте дані за допомогою Import wizard так, як ви вже робили це у темі 3.
+Продивіться дані, щоб бути у контексті.
+
+create schema pandemic;
+use pandemic;
+
+select * from infectious_cases;
+
+2. Нормалізуйте таблицю infectious_cases до 3ї нормальної форми. Збережіть у цій же схемі дві таблиці з нормалізованими даними.
+Виконайте запит SELECT COUNT(*) FROM infectious_cases , щоб ментор міг зрозуміти, скільки записів ви завантажили у базу даних із файла.
+
+-- 2.1 table
+create table infectious_cases_norm as select * from infectious_cases;
+select * from infectious_cases_norm;
+
+create table countries
+(
+	country_id int auto_increment primary key,
+    entity varchar(34),
+    code varchar(8)
+);
+
+-- select max(length(entity)), max(length(code)) from infectious_cases_norm;
+
+insert into countries (entity, code)
+select distinct entity, code from infectious_cases;
+
+select * from countries;
+
+-- 2.2 table
+infectious_cases_norm
+
+alter table infectious_cases_norm
+add column country_id int,
+add constraint fk_country foreign key (country_id) references countries(country_id);
+
+set SQL_SAFE_UPDATES = 0;
+
+update infectious_cases_norm
+set country_id = (select country_id from countries where infectious_cases_norm.entity = countries.entity and infectious_cases_norm.code = countries.code);
+
+set SQL_SAFE_UPDATES = 1;
+
+select * from infectious_cases_norm limit 300;
+
+drop table infectious_cases_norm;
+
+create table infectious_cases_norm as select * from infectious_cases;
+
+alter table infectious_cases_norm
+add column id_ic int auto_increment primary key first;
+
+alter table infectious_cases_norm
+add column country_id int after id_ic,
+add constraint fk_country foreign key (country_id) references countries(country_id);
+
+set SQL_SAFE_UPDATES = 0;
+update infectious_cases_norm
+set country_id = (select country_id from countries where infectious_cases_norm.entity = countries.entity and infectious_cases_norm.code = countries.code);
+set SQL_SAFE_UPDATES = 1;
+
+select * from infectious_cases_norm;
+
+alter table infectious_cases_norm
+drop column entity,
+drop column code;
+select * from infectious_cases_norm;
+SELECT COUNT(*) FROM infectious_cases
+
+-- 3. Проаналізуйте дані:
+Для кожної унікальної комбінації Entity та Code або їх id порахуйте середнє, мінімальне, максимальне значення та суму для атрибута Number_rabies.
+💡 Врахуйте, що атрибут Number_rabies може містити порожні значення ‘’ — вам попередньо необхідно їх відфільтрувати.
+Результат відсортуйте за порахованим середнім значенням у порядку спадання.
+Оберіть тільки 10 рядків для виведення на екран.
+
+select country_id, min(Number_rabies), max(Number_rabies), sum(Number_rabies)
+from infectious_cases_norm
+group by country_id;
+
+set SQL_SAFE_UPDATES = 0;
+update infectious_cases_norm
+set Number_rabies = null
+where Number_rabies = '';
+set SQL_SAFE_UPDATES = 1;
+
+alter table infectious_cases_norm
+modify column Number_rabies float;
+
+select country_id, avg(Number_rabies) as avg_rabies, min(Number_rabies), max(Number_rabies), sum(Number_rabies)
+from infectious_cases_norm
+group by country_id
+order by avg_rabies desc
+limit 10;
+
+4. Побудуйте колонку різниці в роках.
+
+Для оригінальної або нормованої таблиці для колонки Year побудуйте з використанням вбудованих SQL-функцій:
+
+атрибут, що створює дату першого січня відповідного року,
+💡 Наприклад, якщо атрибут містить значення ’1996’, то значення нового атрибута має бути ‘1996-01-01’.
+атрибут, що дорівнює поточній даті,
+атрибут, що дорівнює різниці в роках двох вищезгаданих колонок.
+💡 Перераховувати всі інші атрибути, такі як Number_malaria, не потрібно.
+
+alter table infectious_cases_norm
+add column startofyear date;
+
+set SQL_SAFE_UPDATES = 0;
+update infectious_cases_norm
+set startofyear = makedate(Year, 01); 
+set SQL_SAFE_UPDATES = 1;
+
+select year, startofyear from infectious_cases_norm;
+
+alter table infectious_cases_norm
+add column today date;
+
+set SQL_SAFE_UPDATES = 0;
+update infectious_cases_norm
+set today = curdate(); 
+set SQL_SAFE_UPDATES = 1;
+
+select year, startofyear, today from infectious_cases_norm;
+
+alter table infectious_cases_norm
+add column yearsdiff int;
+
+set SQL_SAFE_UPDATES = 0;
+update infectious_cases_norm
+set yearsdiff = timestampdiff(year, startofyear, today); 
+set SQL_SAFE_UPDATES = 1;
+
+select year, startofyear, today, yearsdiff from infectious_cases_norm;
+
+-- 5. Побудуйте власну функцію.
+Створіть і використайте функцію, що будує такий же атрибут, як і в попередньому завданні: 
+функція має приймати на вхід значення року, а повертати різницю в роках між поточною датою та датою, 
+створеною з атрибута року (1996 рік → ‘1996-01-01’).
+
+DELIMITER //
+
+CREATE FUNCTION CalculateDateDiff(input_year int)
+returns int
+deterministic
+NO SQL
+BEGIN
+	RETURN timestampdiff(YEAR, makedate(input_year, 01), curdate());
+
+END
+//
+DELIMITER ;
+
+select year, CalculateDateDiff(year)
+from infectious_cases_norm;
